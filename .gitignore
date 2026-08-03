@@ -18,6 +18,8 @@ dist-ssr
 .env
 .env.*
 !.env.example
+portainer-stack.yml
+stack.yml
 
 # Wrangler / Cloudflare
 .wrangler/
