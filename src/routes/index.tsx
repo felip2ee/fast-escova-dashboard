@@ -1,45 +1,65 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, MessageSquare, Send, Timer, Zap } from "lucide-react";
+import {
+  DollarSign,
+  Eye,
+  MessageCircle,
+  MessageSquare,
+  Send,
+  Timer,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
-import { DeliveryChart, MessagesChart, ResponseTimeChart } from "@/components/dashboard/Charts";
+import {
+  DeliveryChart,
+  DispatchesChart,
+  MessagesChart,
+  ResponseTimeChart,
+} from "@/components/dashboard/Charts";
 import { CampaignTable } from "@/components/dashboard/CampaignTable";
-import type { DashboardData } from "@/lib/dashboard-types";
+import type { DashboardData, DashboardPeriod } from "@/lib/dashboard-types";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
   head: () => ({
     meta: [
-      { title: "Métricas de campanhas | Fast Escova" },
-      {
-        name: "description",
-        content: "Disparos, leituras, conversas e tempos de resposta da Fast Escova.",
-      },
+      { title: "Métricas de campanhas e atendimento | Fast Escova" },
+      { name: "description", content: "Disparos, oportunidades e atendimento da Fast Escova." },
     ],
   }),
 });
-const nf = (n: number) => n.toLocaleString("pt-BR");
+
+const nf = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const min = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)} min`);
+const money = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "USD" });
+const periods: Array<{ value: DashboardPeriod; label: string }> = [
+  { value: "today", label: "Hoje" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+];
 
 function Dashboard() {
+  const [period, setPeriod] = useState<DashboardPeriod>("30d");
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    fetch("/api/dashboard")
+    setError("");
+    fetch(`/api/dashboard?period=${period}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error);
         return r.json();
       })
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [period]);
   if (error)
     return (
       <main className="mx-auto max-w-xl px-5 py-20 text-center">
         <h1 className="text-xl font-semibold">Dashboard sem conexão com o banco</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          {error} Confira <code>.env</code> e a variável <code>DATABASE_URL</code>.
+          {error} Confira <code>.env</code> e <code>DATABASE_URL</code>.
         </p>
       </main>
     );
@@ -50,85 +70,168 @@ function Dashboard() {
       </main>
     );
   const o = data.overview;
+  const a = data.atendimento;
   return (
     <div className="min-h-screen">
       <header className="border-b border-border/70 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5">
           <div className="flex items-center gap-4">
             <span className="rounded-xl bg-foreground px-3 py-2">
               <img src="/favicon.svg" alt="Fast Escova" className="h-8" />
             </span>
             <div>
-              <h1 className="text-sm font-semibold">Painel de Campanhas</h1>
+              <h1 className="text-sm font-semibold">Painel de Campanhas e Atendimento</h1>
               <p className="text-xs text-muted-foreground">
-                Seg–sáb · 08h–20h · janela de atribuição de 24h
+                Oportunidades, conversão e operação das atendentes
               </p>
             </div>
           </div>
-          <span className="rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs text-success">
-            {o.campanhasAtivas} ativa(s)
-          </span>
+          <div className="flex rounded-xl border bg-muted/40 p-1">
+            {periods.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPeriod(p.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === p.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl space-y-6 px-5 py-8">
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            label="Mensagens disparadas"
-            value={nf(o.enviadas)}
-            hint={`${nf(o.entregues)} entregues`}
-            icon={Send}
-            accent
-          />
-          <StatCard
-            label="Mensagens lidas"
-            value={nf(o.lidas)}
-            hint={`${o.entregues ? Math.round((o.lidas / o.entregues) * 100) : 0}% das entregues`}
-            icon={Eye}
-          />
-          <StatCard
-            label="Conversas geradas"
-            value={nf(o.conversas)}
-            hint="Resposta em até 24h"
-            icon={MessageSquare}
-          />
-          <StatCard
-            label="CTR"
-            value={`${o.ctr.toFixed(1)}%`}
-            hint="Conversas ÷ entregues"
-            icon={Zap}
-          />
-          <StatCard
-            label="1ª resposta média"
-            value={min(o.primeiraRespostaMin)}
-            hint="Somente horário comercial"
-            icon={Timer}
-          />
+      <main className="mx-auto max-w-7xl space-y-10 px-5 py-8">
+        <section className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Disparos
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold">Performance das campanhas</h2>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <StatCard
+              label="Mensagens disparadas"
+              value={nf(o.enviadas)}
+              hint={`${nf(o.entregues)} entregues`}
+              icon={Send}
+              accent
+            />
+            <StatCard
+              label="Custo estimado"
+              value={money(o.custoEstimado)}
+              hint="US$ 0,04 por disparo"
+              icon={DollarSign}
+            />
+            <StatCard
+              label="Oportunidades geradas"
+              value={nf(o.conversas)}
+              hint="Resposta atribuída em até 7 dias"
+              icon={Users}
+            />
+            <StatCard
+              label="Mensagens recebidas"
+              value={nf(o.mensagensRecebidas)}
+              hint="Atribuídas aos disparos"
+              icon={MessageSquare}
+            />
+            <StatCard
+              label="Conversão"
+              value={`${o.ctr.toFixed(1)}%`}
+              hint="Mensagem → oportunidade"
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Custo por oportunidade"
+              value={o.custoPorOportunidade == null ? "—" : money(o.custoPorOportunidade)}
+              hint="Custo estimado ÷ oportunidades"
+              icon={DollarSign}
+            />
+          </div>
+          <div className="grid gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <ChartCard
+                title="Disparos por dia"
+                subtitle="Tentativas, oportunidades e mensagens recebidas"
+              >
+                <DispatchesChart data={data.dispatchesByDay} />
+              </ChartCard>
+            </div>
+            <ChartCard title="Status de entrega" subtitle="Período selecionado">
+              <DeliveryChart data={data.deliveryBreakdown} />
+            </ChartCard>
+          </div>
+          <ChartCard
+            title="Disparos por campanha"
+            subtitle="Oportunidades, mensagens recebidas e conversão por campanha"
+          >
+            <CampaignTable campaigns={data.campaigns} />
+          </ChartCard>
         </section>
-        <section className="grid gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+
+        <section className="space-y-5 border-t border-border/70 pt-10">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Atendimento
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold">Conversas das atendentes</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Somente mensagens de conversa; automações não entram como envio de atendente.
+            </p>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
             <ChartCard
-              title="Mensagens por dia"
-              subtitle="Disparos e entradas no horário comercial"
+              title="Mensagens de atendimento"
+              subtitle="Enviadas pelas atendentes e recebidas dos clientes"
             >
               <MessagesChart data={data.messagesByDay} />
             </ChartCard>
+            <ChartCard
+              title="Tempos de resposta"
+              subtitle="Resposta média e primeira resposta por conversa/dia"
+            >
+              <ResponseTimeChart data={data.responseTimeByDay} />
+            </ChartCard>
           </div>
-          <ChartCard title="Status de entrega" subtitle="Total filtrado">
-            <DeliveryChart data={data.deliveryBreakdown} />
-          </ChartCard>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <StatCard
+              label="Total de conversas"
+              value={nf(a.totalConversas)}
+              hint="Conversas únicas no período"
+              icon={MessageCircle}
+              accent
+            />
+            <StatCard
+              label="Conversas por dia"
+              value={nf(a.mediaConversasDia)}
+              hint="Média no período"
+              icon={Users}
+            />
+            <StatCard
+              label="Enviadas por dia"
+              value={nf(a.mediaEnviadasDia)}
+              hint="Média das atendentes"
+              icon={Send}
+            />
+            <StatCard
+              label="Recebidas por dia"
+              value={nf(a.mediaRecebidasDia)}
+              hint="Média dos clientes"
+              icon={MessageSquare}
+            />
+            <StatCard
+              label="Tempo médio de resposta"
+              value={min(a.tempoRespostaMedioMin)}
+              hint="Próxima resposta da atendente"
+              icon={Timer}
+            />
+            <StatCard
+              label="1ª resposta média/dia"
+              value={min(a.primeiraRespostaMediaMin)}
+              hint="Primeira entrada por conversa/dia"
+              icon={Eye}
+            />
+          </div>
         </section>
-        <ChartCard
-          title="Tempos de resposta"
-          subtitle={`Primeira resposta e média geral · média atual ${min(o.respostaMediaMin)}`}
-        >
-          <ResponseTimeChart data={data.responseTimeByDay} />
-        </ChartCard>
-        <ChartCard
-          title="Disparos por campanha"
-          subtitle="Leitura, conversas atribuídas em 24h, CTR e primeira resposta"
-        >
-          <CampaignTable campaigns={data.campaigns} />
-        </ChartCard>
         <footer className="text-center text-xs text-muted-foreground">
           Fast Escova · Postgres · atualizado em{" "}
           {new Date(data.atualizadoEm).toLocaleString("pt-BR")}

@@ -16,9 +16,11 @@ O projeto utiliza TanStack Start, React, TypeScript, Tailwind CSS e Recharts. A 
 
 ## Regras das métricas
 
-- Horário comercial: segunda a sábado, das 08:00 às 20:00.
+- Horário comercial das métricas de conversa e tempo: segunda a sábado, das 08:00 às 20:00.
+- Disparadas: tentativas processadas, incluindo falhas; entregues e lidas consideram todo o processamento da campanha, mesmo quando a fila termina após as 20:00.
+- Custo estimado: US$ 0,04 por mensagem disparada.
 - Fuso horário: `America/Araguaina`.
-- Conversa gerada: primeira resposta do contato atribuída ao disparo em até 24 horas.
+- Oportunidade gerada: primeira resposta do contato atribuída ao disparo em até 7 dias.
 - CTR: conversas geradas divididas pelas mensagens entregues.
 - Primeira resposta: intervalo entre o disparo e a primeira resposta atribuída.
 - Resposta média: intervalo entre uma mensagem recebida e a próxima mensagem de saída na mesma conversa.

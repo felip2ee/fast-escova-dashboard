@@ -42,7 +42,7 @@ export function MessagesChart({ data }: { data: DashboardData["messagesByDay"] }
         <Area
           type="monotone"
           dataKey="enviadas"
-          name="Disparadas"
+          name="Enviadas pelas atendentes"
           stroke="var(--color-chart-1)"
           fill="var(--color-chart-1)"
           fillOpacity={0.22}
@@ -54,6 +54,43 @@ export function MessagesChart({ data }: { data: DashboardData["messagesByDay"] }
           stroke="var(--color-chart-3)"
           fill="var(--color-chart-3)"
           fillOpacity={0.16}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function DispatchesChart({ data }: { data: DashboardData["dispatchesByDay"] }) {
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <AreaChart data={data} margin={{ left: -20, right: 8, top: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+        <XAxis dataKey="dia" {...axis} />
+        <YAxis {...axis} />
+        <Tooltip {...tooltipStyle} />
+        <Area
+          type="monotone"
+          dataKey="disparadas"
+          name="Disparadas"
+          stroke="var(--color-chart-1)"
+          fill="var(--color-chart-1)"
+          fillOpacity={0.22}
+        />
+        <Area
+          type="monotone"
+          dataKey="oportunidades"
+          name="Oportunidades"
+          stroke="var(--color-chart-2)"
+          fill="var(--color-chart-2)"
+          fillOpacity={0.16}
+        />
+        <Area
+          type="monotone"
+          dataKey="recebidas"
+          name="Mensagens recebidas"
+          stroke="var(--color-chart-3)"
+          fill="var(--color-chart-3)"
+          fillOpacity={0.12}
         />
       </AreaChart>
     </ResponsiveContainer>

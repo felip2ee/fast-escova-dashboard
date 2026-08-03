@@ -1,5 +1,5 @@
 import { Pool, type QueryResultRow } from "pg";
-import type { DashboardData } from "./dashboard-types";
+import type { DashboardData, DashboardPeriod } from "./dashboard-types";
 
 let pool: Pool | undefined;
 
@@ -16,13 +16,16 @@ function database() {
 
 const n = (value: unknown) => Number(value ?? 0);
 const nullable = (value: unknown) => (value == null ? null : Number(value));
+const daysByPeriod: Record<DashboardPeriod, number> = { today: 1, "7d": 7, "30d": 30 };
 
-async function rows<T extends QueryResultRow>(sql: string) {
-  return (await database().query<T>(sql)).rows;
+async function rows<T extends QueryResultRow>(sql: string, values: unknown[] = []) {
+  return (await database().query<T>(sql, values)).rows;
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
-  const [campaignsRaw, dailyRaw, responseRaw] = await Promise.all([
+export async function getDashboardData(period: DashboardPeriod = "30d"): Promise<DashboardData> {
+  const days = daysByPeriod[period];
+  const periodStart = `(now() AT TIME ZONE 'America/Araguaina')::date - ($1::int - 1)`;
+  const [campaignsRaw, dispatchRaw, messagesRaw, responseRaw] = await Promise.all([
     rows<{
       id: string;
       nome: string;
@@ -33,50 +36,84 @@ export async function getDashboardData(): Promise<DashboardData> {
       entregues: string;
       lidas: string;
       conversas: string;
+      mensagens_recebidas: string;
       ctr: string | null;
       primeira_resposta_min: string | null;
-    }>(`SELECT c.id::text, c.nome, COALESCE(c.tipo, 'avulsa') AS tipo,
+    }>(
+      `SELECT c.id::text, c.nome, COALESCE(c.tipo, 'avulsa') AS tipo,
         to_char(COALESCE(c.iniciada_em, c.criado_em) AT TIME ZONE 'America/Araguaina', 'DD/MM/YYYY') AS data,
         c.status,
-        count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido') AND extract(isodow FROM cd.enviado_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time < time '20:00') AS enviadas,
-        count(cd.id) FILTER (WHERE cd.status_atual IN ('entregue','lido') AND extract(isodow FROM cd.enviado_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time < time '20:00') AS entregues,
-        count(cd.id) FILTER (WHERE cd.status_atual = 'lido' AND extract(isodow FROM cd.lido_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.lido_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.lido_em AT TIME ZONE 'America/Araguaina')::time < time '20:00') AS lidas,
-        count(cd.id) FILTER (WHERE cd.engajou AND cd.primeira_resposta_em <= cd.enviado_em + interval '24 hours' AND extract(isodow FROM cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time < time '20:00') AS conversas,
-        round(100.0 * count(cd.id) FILTER (WHERE cd.engajou AND cd.primeira_resposta_em <= cd.enviado_em + interval '24 hours' AND extract(isodow FROM cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time < time '20:00')
-          / nullif(count(cd.id) FILTER (WHERE cd.status_atual IN ('entregue','lido') AND extract(isodow FROM cd.enviado_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.enviado_em AT TIME ZONE 'America/Araguaina')::time < time '20:00'), 0), 2) AS ctr,
-        round(avg(cd.tempo_resposta_segundos) FILTER (WHERE cd.engajou AND cd.primeira_resposta_em <= cd.enviado_em + interval '24 hours' AND extract(isodow FROM cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6 AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time < time '20:00') / 60.0, 2) AS primeira_resposta_min
+        count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido','falha')) AS enviadas,
+        count(cd.id) FILTER (WHERE cd.status_atual IN ('entregue','lido')) AS entregues,
+        count(cd.id) FILTER (WHERE cd.status_atual = 'lido') AS lidas,
+        count(cd.id) FILTER (WHERE cd.engajou) AS conversas,
+        (SELECT count(*) FROM disparos.mensagens mr
+          JOIN disparos.campanha_destinatarios cdr ON cdr.id=mr.atribuida_destinatario_id
+          WHERE cdr.campanha_id=c.id AND mr.escopo='conversa' AND mr.direcao='entrada') AS mensagens_recebidas,
+        round(100.0 * count(cd.id) FILTER (WHERE cd.engajou)
+          / nullif(count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido','falha')), 0), 2) AS ctr,
+        round(avg(cd.tempo_resposta_segundos) FILTER (WHERE cd.engajou) / 60.0, 2) AS primeira_resposta_min
       FROM disparos.campanhas c
       LEFT JOIN disparos.campanha_destinatarios cd ON cd.campanha_id = c.id
-      GROUP BY c.id ORDER BY COALESCE(c.iniciada_em, c.criado_em) DESC`),
-    rows<{ dia: string; enviadas: string; recebidas: string }>(`WITH dias AS (
-        SELECT generate_series(current_date - 13, current_date, interval '1 day')::date AS dia
+      WHERE (COALESCE(c.iniciada_em, c.criado_em) AT TIME ZONE 'America/Araguaina')::date >= ${periodStart}
+      GROUP BY c.id ORDER BY COALESCE(c.iniciada_em, c.criado_em) DESC`,
+      [days],
+    ),
+    rows<{ dia: string; disparadas: string; oportunidades: string; recebidas: string }>(
+      `WITH dias AS (
+        SELECT generate_series(${periodStart}, (now() AT TIME ZONE 'America/Araguaina')::date, interval '1 day')::date AS dia
       ) SELECT to_char(d.dia, 'DD/MM') AS dia,
-        count(m.id) FILTER (WHERE m.escopo = 'disparo' AND m.direcao = 'saida') AS enviadas,
-        count(m.id) FILTER (WHERE m.escopo = 'conversa' AND m.direcao = 'entrada') AS recebidas
-      FROM dias d LEFT JOIN disparos.mensagens m ON (COALESCE(m.wa_timestamp, m.criado_em) AT TIME ZONE 'America/Araguaina')::date = d.dia
-        AND extract(isodow FROM COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6
-        AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::time >= time '08:00'
-        AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::time < time '20:00'
-      GROUP BY d.dia ORDER BY d.dia`),
-    rows<{ dia: string; primeira: string | null; media: string | null }>(`WITH entradas AS (
+        count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido','falha')) AS disparadas,
+        count(cd.id) FILTER (WHERE cd.engajou) AS oportunidades,
+        (SELECT count(*) FROM disparos.mensagens mr
+          WHERE mr.escopo='conversa' AND mr.direcao='entrada' AND mr.atribuida_destinatario_id IS NOT NULL
+            AND (COALESCE(mr.wa_timestamp,mr.criado_em) AT TIME ZONE 'America/Araguaina')::date=d.dia) AS recebidas
+      FROM dias d LEFT JOIN disparos.campanha_destinatarios cd
+        ON (cd.enviado_em AT TIME ZONE 'America/Araguaina')::date = d.dia
+      GROUP BY d.dia ORDER BY d.dia`,
+      [days],
+    ),
+    rows<{ dia: string; conversas: string; enviadas: string; recebidas: string }>(
+      `WITH dias AS (
+        SELECT generate_series(${periodStart}, (now() AT TIME ZONE 'America/Araguaina')::date, interval '1 day')::date AS dia
+      ) SELECT to_char(d.dia, 'DD/MM') AS dia,
+        count(DISTINCT m.conversa_id) AS conversas,
+        count(m.id) FILTER (WHERE m.direcao='saida' AND m.origem='atendente') AS enviadas,
+        count(m.id) FILTER (WHERE m.direcao='entrada') AS recebidas
+      FROM dias d LEFT JOIN disparos.mensagens m
+        ON m.escopo='conversa'
+        AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::date = d.dia
+      GROUP BY d.dia ORDER BY d.dia`,
+      [days],
+    ),
+    rows<{ dia: string; primeira: string | null; media: string | null }>(
+      `WITH entradas AS (
         SELECT m.id, m.conversa_id, COALESCE(m.wa_timestamp,m.criado_em) AS recebida_em,
+          row_number() OVER (PARTITION BY m.conversa_id,
+            (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::date
+            ORDER BY COALESCE(m.wa_timestamp,m.criado_em),m.id) AS ordem_dia
+        FROM disparos.mensagens m
+        WHERE m.escopo='conversa' AND m.direcao='entrada'
+          AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::date >= ${periodStart}
+      ), tempos AS (
+        SELECT e.*,
           (SELECT min(COALESCE(s.wa_timestamp,s.criado_em)) FROM disparos.mensagens s
-           WHERE s.conversa_id=m.conversa_id AND s.escopo='conversa' AND s.direcao='saida'
-             AND COALESCE(s.wa_timestamp,s.criado_em) > COALESCE(m.wa_timestamp,m.criado_em)) AS respondida_em
-        FROM disparos.mensagens m WHERE m.escopo='conversa' AND m.direcao='entrada'
-          AND extract(isodow FROM COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6
-          AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::time >= time '08:00'
-          AND (COALESCE(m.wa_timestamp,m.criado_em) AT TIME ZONE 'America/Araguaina')::time < time '20:00'
-      ), dias AS (SELECT generate_series(current_date - 13, current_date, interval '1 day')::date AS dia)
-      SELECT to_char(d.dia,'DD/MM') AS dia,
-        round(avg(cd.tempo_resposta_segundos) / 60.0, 2) AS primeira,
-        round(avg(extract(epoch FROM (e.respondida_em-e.recebida_em))) FILTER (WHERE e.respondida_em IS NOT NULL) / 60.0, 2) AS media
-      FROM dias d
-      LEFT JOIN disparos.campanha_destinatarios cd ON (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::date=d.dia
-        AND extract(isodow FROM cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina') BETWEEN 1 AND 6
-        AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time >= time '08:00' AND (cd.primeira_resposta_em AT TIME ZONE 'America/Araguaina')::time < time '20:00'
-      LEFT JOIN entradas e ON (e.recebida_em AT TIME ZONE 'America/Araguaina')::date=d.dia
-      GROUP BY d.dia ORDER BY d.dia`),
+           WHERE s.conversa_id=e.conversa_id AND s.escopo='conversa'
+             AND s.direcao='saida' AND s.origem='atendente'
+             AND COALESCE(s.wa_timestamp,s.criado_em) > e.recebida_em) AS respondida_em
+        FROM entradas e
+      ), dias AS (
+        SELECT generate_series(${periodStart}, (now() AT TIME ZONE 'America/Araguaina')::date, interval '1 day')::date AS dia
+      ) SELECT to_char(d.dia,'DD/MM') AS dia,
+        round(avg(extract(epoch FROM (t.respondida_em-t.recebida_em))) FILTER
+          (WHERE t.respondida_em IS NOT NULL AND t.ordem_dia=1) / 60.0, 2) AS primeira,
+        round(avg(extract(epoch FROM (t.respondida_em-t.recebida_em))) FILTER
+          (WHERE t.respondida_em IS NOT NULL) / 60.0, 2) AS media
+      FROM dias d LEFT JOIN tempos t
+        ON (t.recebida_em AT TIME ZONE 'America/Araguaina')::date=d.dia
+      GROUP BY d.dia ORDER BY d.dia`,
+      [days],
+    ),
   ]);
 
   const campaigns = campaignsRaw.map((c) => ({
@@ -89,6 +126,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     entregues: n(c.entregues),
     lidas: n(c.lidas),
     conversas: n(c.conversas),
+    mensagensRecebidas: n(c.mensagens_recebidas),
     ctr: n(c.ctr),
     primeiraRespostaMin: nullable(c.primeira_resposta_min),
   }));
@@ -98,11 +136,29 @@ export async function getDashboardData(): Promise<DashboardData> {
       entregues: a.entregues + c.entregues,
       lidas: a.lidas + c.lidas,
       conversas: a.conversas + c.conversas,
+      mensagensRecebidas: a.mensagensRecebidas + c.mensagensRecebidas,
     }),
-    { enviadas: 0, entregues: 0, lidas: 0, conversas: 0 },
+    { enviadas: 0, entregues: 0, lidas: 0, conversas: 0, mensagensRecebidas: 0 },
   );
   const firstValues = campaigns.filter((c) => c.primeiraRespostaMin != null);
   const responseValues = responseRaw.filter((d) => d.media != null);
+  const firstDailyValues = responseRaw.filter((d) => d.primeira != null);
+  const messageTotals = messagesRaw.reduce(
+    (a, d) => ({
+      conversas: a.conversas + n(d.conversas),
+      enviadas: a.enviadas + n(d.enviadas),
+      recebidas: a.recebidas + n(d.recebidas),
+    }),
+    { conversas: 0, enviadas: 0, recebidas: 0 },
+  );
+  const totalConversationIds = await rows<{ total: string }>(
+    `SELECT count(DISTINCT conversa_id) AS total
+    FROM disparos.mensagens WHERE escopo='conversa'
+      AND (COALESCE(wa_timestamp,criado_em) AT TIME ZONE 'America/Araguaina')::date >= ${periodStart}`,
+    [days],
+  );
+  const totalConversas = n(totalConversationIds[0]?.total);
+  const custoEstimado = sums.enviadas * 0.04;
 
   return {
     atualizadoEm: new Date().toISOString(),
@@ -111,16 +167,37 @@ export async function getDashboardData(): Promise<DashboardData> {
       ...sums,
       campanhasAtivas: campaigns.filter((c) => ["agendada", "processando"].includes(c.status))
         .length,
-      ctr: sums.entregues ? Number(((100 * sums.conversas) / sums.entregues).toFixed(2)) : 0,
+      ctr: sums.enviadas ? Number(((100 * sums.conversas) / sums.enviadas).toFixed(2)) : 0,
       primeiraRespostaMin: firstValues.length
         ? firstValues.reduce((s, c) => s + (c.primeiraRespostaMin ?? 0), 0) / firstValues.length
         : null,
       respostaMediaMin: responseValues.length
         ? responseValues.reduce((s, d) => s + n(d.media), 0) / responseValues.length
         : null,
+      custoEstimado,
+      custoPorOportunidade: sums.conversas ? custoEstimado / sums.conversas : null,
     },
-    messagesByDay: dailyRaw.map((d) => ({
+    atendimento: {
+      totalConversas,
+      mediaConversasDia: totalConversas / days,
+      mediaEnviadasDia: messageTotals.enviadas / days,
+      mediaRecebidasDia: messageTotals.recebidas / days,
+      tempoRespostaMedioMin: responseValues.length
+        ? responseValues.reduce((s, d) => s + n(d.media), 0) / responseValues.length
+        : null,
+      primeiraRespostaMediaMin: firstDailyValues.length
+        ? firstDailyValues.reduce((s, d) => s + n(d.primeira), 0) / firstDailyValues.length
+        : null,
+    },
+    dispatchesByDay: dispatchRaw.map((d) => ({
       dia: d.dia,
+      disparadas: n(d.disparadas),
+      oportunidades: n(d.oportunidades),
+      recebidas: n(d.recebidas),
+    })),
+    messagesByDay: messagesRaw.map((d) => ({
+      dia: d.dia,
+      conversas: n(d.conversas),
       enviadas: n(d.enviadas),
       recebidas: n(d.recebidas),
     })),

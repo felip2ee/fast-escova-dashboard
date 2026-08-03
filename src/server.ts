@@ -55,7 +55,10 @@ export default {
       if (url.pathname === "/api/dashboard") {
         if (request.method !== "GET") return new Response(null, { status: 405 });
         try {
-          return Response.json(await getDashboardData(), {
+          const requestedPeriod = url.searchParams.get("period");
+          const period =
+            requestedPeriod === "today" || requestedPeriod === "7d" ? requestedPeriod : "30d";
+          return Response.json(await getDashboardData(period), {
             headers: { "cache-control": "private, max-age=30" },
           });
         } catch (error) {

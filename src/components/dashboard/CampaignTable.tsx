@@ -19,8 +19,9 @@ export function CampaignTable({ campaigns }: { campaigns: CampaignMetric[] }) {
             <th>Status</th>
             <th className="text-right">Disparadas</th>
             <th className="text-right">Lidas</th>
-            <th className="text-right">Conversas 24h</th>
-            <th className="text-right">CTR</th>
+            <th className="text-right">Oportunidades</th>
+            <th className="text-right">Recebidas</th>
+            <th className="text-right">Conversão</th>
             <th className="text-right">1ª resposta</th>
           </tr>
         </thead>
@@ -40,6 +41,7 @@ export function CampaignTable({ campaigns }: { campaigns: CampaignMetric[] }) {
               <td className="text-right">{nf(c.enviadas)}</td>
               <td className="text-right">{nf(c.lidas)}</td>
               <td className="text-right">{nf(c.conversas)}</td>
+              <td className="text-right">{nf(c.mensagensRecebidas)}</td>
               <td className="text-right font-medium text-primary">{c.ctr.toFixed(1)}%</td>
               <td className="text-right">
                 {c.primeiraRespostaMin == null ? "—" : `${c.primeiraRespostaMin.toFixed(1)} min`}
