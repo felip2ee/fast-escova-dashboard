@@ -1,22 +1,107 @@
-## Execução local
+# Fast Escova Dashboard
 
-1. Copie `.env.example` para `.env` e informe `DATABASE_URL`.
-2. Execute `bun install`.
-3. Execute `bun run dev`.
+Dashboard operacional para acompanhar campanhas de WhatsApp da Fast Escova diretamente a partir do PostgreSQL.
 
-O Postgres é acessado somente pela camada servidor em `/api/dashboard`; a senha não é enviada ao navegador. As métricas consideram segunda a sábado, das 08:00 às 20:00, no fuso `America/Araguaina`. Conversas são atribuídas ao disparo quando a primeira resposta ocorre em até 24 horas. CTR = conversas geradas / mensagens entregues.
+O projeto utiliza TanStack Start, React, TypeScript, Tailwind CSS e Recharts. A consulta ao banco acontece exclusivamente no servidor; a credencial do PostgreSQL não é exposta ao navegador.
 
-## Portainer / Swarm
+## Indicadores
 
-Use `portainer-stack.yml` no Web Editor. Cadastre `DATABASE_URL` como variável da stack. A imagem pública é `ghcr.io/felip2ee/fast-escova-dashboard:latest` e o domínio padrão é `fast.agencianovabr.com`.
+- Mensagens disparadas, entregues e lidas.
+- Conversas geradas por campanha.
+- CTR por campanha.
+- Tempo médio de primeira resposta.
+- Tempo médio de resposta durante as conversas.
+- Evolução diária de disparos e mensagens recebidas.
+- Funil de entrega e desempenho detalhado por campanha.
 
-## Development
+## Regras das métricas
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+- Horário comercial: segunda a sábado, das 08:00 às 20:00.
+- Fuso horário: `America/Araguaina`.
+- Conversa gerada: primeira resposta do contato atribuída ao disparo em até 24 horas.
+- CTR: conversas geradas divididas pelas mensagens entregues.
+- Primeira resposta: intervalo entre o disparo e a primeira resposta atribuída.
+- Resposta média: intervalo entre uma mensagem recebida e a próxima mensagem de saída na mesma conversa.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+## Configuração
+
+Crie um arquivo `.env` com base em `.env.example`:
+
+```env
+DATABASE_URL=postgresql://usuario:senha@host:5432/banco
+DATABASE_SSL=disable
+```
+
+Esta instalação usa conexão PostgreSQL sem TLS, portanto mantenha `DATABASE_SSL=disable`.
+
+## Desenvolvimento local
+
+Requisitos:
+
+- Bun 1.3 ou superior.
+- PostgreSQL acessível pela máquina local.
+
+```bash
+bun install
+bun run dev
+```
+
+O servidor local estará disponível no endereço exibido pelo Vite.
+
+## Validação
+
+```bash
+bun run lint
+bun run build
+```
+
+O endpoint `GET /api/health` pode ser utilizado para verificar a saúde do container.
+
+## Imagem Docker
+
+A imagem é construída automaticamente pelo GitHub Actions após atualizações na branch `main`:
+
+```text
+ghcr.io/felip2ee/fast-escova-dashboard:latest
+```
+
+O repositório é privado, mas a imagem do container pode ser utilizada publicamente pelo Portainer sem autenticação no GitHub Container Registry.
+
+## Portainer, Docker Swarm e Traefik
+
+O arquivo local `portainer-stack.yml` está ignorado pelo Git e deve ser colado no Web Editor do Portainer.
+
+Variável obrigatória da stack:
+
+```text
+DATABASE_URL
+```
+
+Variáveis opcionais:
+
+```text
+DATABASE_SSL=disable
+DASHBOARD_DOMAIN=fast.agencianovabr.com
+TRAEFIK_ENTRYPOINT=websecure
+TRAEFIK_CERTRESOLVER=letsencryptresolver
+```
+
+A stack espera que a rede overlay externa `NovaNet` e o Traefik já existam no Swarm.
+
+## Segurança
+
+- Nunca use o prefixo `VITE_` na variável `DATABASE_URL`.
+- Não adicione `.env` ou a stack com credenciais ao Git.
+- Restrinja o usuário do PostgreSQL às permissões de leitura necessárias para o dashboard.
+- O acesso HTTP é redirecionado para HTTPS pelo Traefik.
+
+## Estrutura principal
+
+```text
+src/lib/dashboard-db.ts       Consultas e agregações do PostgreSQL
+src/routes/index.tsx          Interface principal
+src/server.ts                 API e health check
+Dockerfile                    Build multi-stage para produção
+.github/workflows/            Publicação automatizada da imagem
+portainer-stack.yml           Stack local ignorada pelo Git
 ```
