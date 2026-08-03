@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  fast-escova-dashboard:
+    image: ghcr.io/felip2ee/fast-escova-dashboard:latest
+    networks:
+      - NovaNet
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-require}
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=NovaNet"
+        - "traefik.http.routers.fast-escova-dashboard-http.rule=Host(`${DASHBOARD_DOMAIN:-fast.agencianovabr.com}`)"
+        - "traefik.http.routers.fast-escova-dashboard-http.entrypoints=web"
+        - "traefik.http.routers.fast-escova-dashboard-http.middlewares=fast-escova-dashboard-https-redirect"
+        - "traefik.http.middlewares.fast-escova-dashboard-https-redirect.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.fast-escova-dashboard-https-redirect.redirectscheme.permanent=true"
+        - "traefik.http.routers.fast-escova-dashboard.rule=Host(`${DASHBOARD_DOMAIN:-fast.agencianovabr.com}`)"
+        - "traefik.http.routers.fast-escova-dashboard.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.fast-escova-dashboard.tls=true"
+        - "traefik.http.routers.fast-escova-dashboard.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptresolver}"
+        - "traefik.http.routers.fast-escova-dashboard.middlewares=fast-escova-dashboard-auth"
+        - "traefik.http.middlewares.fast-escova-dashboard-auth.basicauth.users=wakeclub:$$2y$$05$$owl6BaxhzfJ0/BvTiYBDneGCSfO5hT86bIFkjwO6013tUOa8BVuFe"
+        - "traefik.http.routers.fast-escova-dashboard.service=fast-escova-dashboard"
+        - "traefik.http.services.fast-escova-dashboard.loadbalancer.server.port=3000"
+
+networks:
+  NovaNet:
+    external: true
+    name: NovaNet
