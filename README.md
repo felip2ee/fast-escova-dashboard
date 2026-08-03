@@ -1,7 +1,3 @@
-# Fast Escova Insights
-
-gere um dashboard para a fast escova para monitorar as campanhas de disparo feitas, e metricas de mensagens trocadas/enviadas/ tempo de primeira resposta medio/ tempo de reposta medio, traga graficos bonitos,e deixe uma base para monitorar um agente de IA, mandei um svg pro icone, e favicon, vou usar salvo na tela inicial desktop. e mandei uma foto da logo
-
 ## Execução local
 
 1. Copie `.env.example` para `.env` e informe `DATABASE_URL`.
