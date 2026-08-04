@@ -44,11 +44,11 @@ const thirtyDaysAgo = () => {
 };
 
 function Dashboard() {
-  const [period, setPeriod] = useState<DashboardPeriod>("30d");
+  const [period, setPeriod] = useState<DashboardPeriod>("thisMonth");
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(today);
   const [appliedFilter, setAppliedFilter] = useState({
-    period: "30d" as DashboardPeriod,
+    period: "thisMonth" as DashboardPeriod,
     startDate: "",
     endDate: "",
   });
@@ -56,6 +56,8 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 25_000);
     setError("");
     setLoading(true);
     const params = new URLSearchParams({ period: appliedFilter.period });
@@ -63,14 +65,27 @@ function Dashboard() {
       params.set("start", appliedFilter.startDate);
       params.set("end", appliedFilter.endDate);
     }
-    fetch(`/api/dashboard?${params}`)
+    fetch(`/api/dashboard?${params}`, { signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error);
         return r.json();
       })
       .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) =>
+        setError(
+          e instanceof DOMException && e.name === "AbortError"
+            ? "A consulta excedeu 25 segundos."
+            : e.message,
+        ),
+      )
+      .finally(() => {
+        window.clearTimeout(timeout);
+        setLoading(false);
+      });
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [appliedFilter]);
   if (error)
     return (
@@ -105,21 +120,33 @@ function Dashboard() {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex rounded-xl border bg-muted/40 p-1">
-              <button
-                type="button"
-                onClick={() => setPeriod("lastMonth")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === "lastMonth" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            <div className="relative flex items-center rounded-xl border bg-background shadow-sm">
+              <CalendarDays className="pointer-events-none absolute left-3 size-3.5 text-muted-foreground" />
+              <select
+                aria-label="Período do dashboard"
+                value={period}
+                onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}
+                className="cursor-pointer appearance-none bg-transparent py-2 pl-9 pr-8 text-xs font-semibold text-foreground outline-none [color-scheme:light]"
               >
-                Mês passado
-              </button>
-              <button
-                type="button"
-                onClick={() => setPeriod("custom")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === "custom" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <CalendarDays className="size-3.5" /> Escolher datas
-              </button>
+                <option className="bg-background text-foreground" value="today">
+                  Hoje
+                </option>
+                <option className="bg-background text-foreground" value="yesterday">
+                  Ontem
+                </option>
+                <option className="bg-background text-foreground" value="thisMonth">
+                  Este mês
+                </option>
+                <option className="bg-background text-foreground" value="lastMonth">
+                  Mês passado
+                </option>
+                <option className="bg-background text-foreground" value="custom">
+                  Escolher datas
+                </option>
+              </select>
+              <span className="pointer-events-none absolute right-3 text-[10px] text-muted-foreground">
+                ▾
+              </span>
             </div>
             {period === "custom" && (
               <div className="flex items-center gap-2 rounded-xl border bg-background px-2 py-1">

@@ -13,7 +13,8 @@ export type CampaignMetric = {
   primeiraRespostaMin: number | null;
 };
 
-export type DashboardPeriod = "today" | "7d" | "30d" | "lastMonth" | "custom";
+export type DashboardPeriod =
+  "today" | "yesterday" | "thisMonth" | "7d" | "30d" | "lastMonth" | "custom";
 
 export type DashboardData = {
   atualizadoEm: string;

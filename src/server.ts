@@ -3,12 +3,36 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { getDashboardData } from "./lib/dashboard-db";
+import type { DashboardData, DashboardPeriod } from "./lib/dashboard-types";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
+const dashboardCache = new Map<string, { expiresAt: number; data: DashboardData }>();
+const dashboardRequests = new Map<string, Promise<DashboardData>>();
+
+async function getCachedDashboardData(
+  period: DashboardPeriod,
+  range: { start?: string; end?: string },
+) {
+  const cacheKey = `${period}:${range.start ?? ""}:${range.end ?? ""}`;
+  const cached = dashboardCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const pending = dashboardRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = getDashboardData(period, range)
+    .then((data) => {
+      dashboardCache.set(cacheKey, { data, expiresAt: Date.now() + 30_000 });
+      return data;
+    })
+    .finally(() => dashboardRequests.delete(cacheKey));
+  dashboardRequests.set(cacheKey, request);
+  return request;
+}
 
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
@@ -58,6 +82,8 @@ export default {
           const requestedPeriod = url.searchParams.get("period");
           const period =
             requestedPeriod === "today" ||
+            requestedPeriod === "yesterday" ||
+            requestedPeriod === "thisMonth" ||
             requestedPeriod === "7d" ||
             requestedPeriod === "lastMonth" ||
             requestedPeriod === "custom"
@@ -72,7 +98,7 @@ export default {
           ) {
             return Response.json({ error: "Intervalo de datas invalido." }, { status: 400 });
           }
-          return Response.json(await getDashboardData(period, { start, end }), {
+          return Response.json(await getCachedDashboardData(period, { start, end }), {
             headers: { "cache-control": "private, max-age=30" },
           });
         } catch (error) {

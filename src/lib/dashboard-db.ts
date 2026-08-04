@@ -10,6 +10,9 @@ function database() {
     connectionString,
     ssl: process.env.DATABASE_SSL === "disable" ? false : { rejectUnauthorized: false },
     max: 5,
+    connectionTimeoutMillis: 5_000,
+    query_timeout: 20_000,
+    statement_timeout: 20_000,
   });
   return pool;
 }
@@ -29,16 +32,26 @@ export async function getDashboardData(
   const periodBounds =
     period === "custom"
       ? { start: range.start!, end: range.end! }
-      : period === "lastMonth"
+      : period === "yesterday"
         ? {
-            start:
-              "date_trunc('month', now() AT TIME ZONE 'America/Araguaina')::date - interval '1 month'",
-            end: "date_trunc('month', now() AT TIME ZONE 'America/Araguaina')::date - interval '1 day'",
+            start: "(now() AT TIME ZONE 'America/Araguaina')::date - interval '1 day'",
+            end: "(now() AT TIME ZONE 'America/Araguaina')::date - interval '1 day'",
           }
-        : {
-            start: `(now() AT TIME ZONE 'America/Araguaina')::date - interval '${period === "today" ? 0 : period === "7d" ? 6 : 29} days'`,
-            end: `(now() AT TIME ZONE 'America/Araguaina')::date`,
-          };
+        : period === "thisMonth"
+          ? {
+              start: "date_trunc('month', now() AT TIME ZONE 'America/Araguaina')::date",
+              end: "(now() AT TIME ZONE 'America/Araguaina')::date",
+            }
+          : period === "lastMonth"
+            ? {
+                start:
+                  "date_trunc('month', now() AT TIME ZONE 'America/Araguaina')::date - interval '1 month'",
+                end: "date_trunc('month', now() AT TIME ZONE 'America/Araguaina')::date - interval '1 day'",
+              }
+            : {
+                start: `(now() AT TIME ZONE 'America/Araguaina')::date - interval '${period === "today" ? 0 : period === "7d" ? 6 : 29} days'`,
+                end: `(now() AT TIME ZONE 'America/Araguaina')::date`,
+              };
   const isCustom = period === "custom";
   const periodStart = isCustom ? "$1::date" : periodBounds.start;
   const periodEnd = isCustom ? "$2::date" : periodBounds.end;
