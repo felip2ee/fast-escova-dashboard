@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
+  CalendarDays,
   DollarSign,
   Eye,
   MessageCircle,
   MessageSquare,
+  RefreshCw,
   Send,
   Timer,
   TrendingUp,
@@ -34,26 +36,42 @@ export const Route = createFileRoute("/")({
 const nf = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const min = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)} min`);
 const money = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "USD" });
-const periods: Array<{ value: DashboardPeriod; label: string }> = [
-  { value: "today", label: "Hoje" },
-  { value: "7d", label: "7 dias" },
-  { value: "30d", label: "30 dias" },
-];
+const today = () => new Date().toISOString().slice(0, 10);
+const thirtyDaysAgo = () => {
+  const date = new Date();
+  date.setDate(date.getDate() - 29);
+  return date.toISOString().slice(0, 10);
+};
 
 function Dashboard() {
   const [period, setPeriod] = useState<DashboardPeriod>("30d");
+  const [startDate, setStartDate] = useState(thirtyDaysAgo);
+  const [endDate, setEndDate] = useState(today);
+  const [appliedFilter, setAppliedFilter] = useState({
+    period: "30d" as DashboardPeriod,
+    startDate: "",
+    endDate: "",
+  });
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     setError("");
-    fetch(`/api/dashboard?period=${period}`)
+    setLoading(true);
+    const params = new URLSearchParams({ period: appliedFilter.period });
+    if (appliedFilter.period === "custom") {
+      params.set("start", appliedFilter.startDate);
+      params.set("end", appliedFilter.endDate);
+    }
+    fetch(`/api/dashboard?${params}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error);
         return r.json();
       })
       .then(setData)
-      .catch((e) => setError(e.message));
-  }, [period]);
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [appliedFilter]);
   if (error)
     return (
       <main className="mx-auto max-w-xl px-5 py-20 text-center">
@@ -86,17 +104,54 @@ function Dashboard() {
               </p>
             </div>
           </div>
-          <div className="flex rounded-xl border bg-muted/40 p-1">
-            {periods.map((p) => (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex rounded-xl border bg-muted/40 p-1">
               <button
-                key={p.value}
                 type="button"
-                onClick={() => setPeriod(p.value)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === p.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setPeriod("lastMonth")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === "lastMonth" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {p.label}
+                Mês passado
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setPeriod("custom")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${period === "custom" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <CalendarDays className="size-3.5" /> Escolher datas
+              </button>
+            </div>
+            {period === "custom" && (
+              <div className="flex items-center gap-2 rounded-xl border bg-background px-2 py-1">
+                <input
+                  aria-label="Data inicial"
+                  type="date"
+                  value={startDate}
+                  max={endDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="bg-transparent text-xs outline-none"
+                />
+                <span className="text-xs text-muted-foreground">até</span>
+                <input
+                  aria-label="Data final"
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  max={today()}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className="bg-transparent text-xs outline-none"
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={loading || (period === "custom" && (!startDate || !endDate))}
+              onClick={() => setAppliedFilter({ period, startDate, endDate })}
+              className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+              Atualizar dados
+            </button>
           </div>
         </div>
       </header>
@@ -108,7 +163,7 @@ function Dashboard() {
             </p>
             <h2 className="mt-1 text-2xl font-semibold">Performance das campanhas</h2>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
               label="Mensagens disparadas"
               value={nf(o.enviadas)}
@@ -125,14 +180,8 @@ function Dashboard() {
             <StatCard
               label="Oportunidades geradas"
               value={nf(o.conversas)}
-              hint="Resposta atribuída em até 7 dias"
+              hint="Resposta do mesmo número em até 48 horas"
               icon={Users}
-            />
-            <StatCard
-              label="Mensagens recebidas"
-              value={nf(o.mensagensRecebidas)}
-              hint="Atribuídas aos disparos"
-              icon={MessageSquare}
             />
             <StatCard
               label="Conversão"
@@ -151,7 +200,7 @@ function Dashboard() {
             <div className="lg:col-span-2">
               <ChartCard
                 title="Disparos por dia"
-                subtitle="Tentativas, oportunidades e mensagens recebidas"
+                subtitle="Mensagens disparadas e oportunidades geradas"
               >
                 <DispatchesChart data={data.dispatchesByDay} />
               </ChartCard>
@@ -162,7 +211,7 @@ function Dashboard() {
           </div>
           <ChartCard
             title="Disparos por campanha"
-            subtitle="Oportunidades, mensagens recebidas e conversão por campanha"
+            subtitle="Nome da campanha, quantidade disparada e conversão em oportunidades"
           >
             <CampaignTable campaigns={data.campaigns} />
           </ChartCard>
@@ -207,13 +256,13 @@ function Dashboard() {
               icon={Users}
             />
             <StatCard
-              label="Enviadas por dia"
+              label="Mensagens enviadas por dia"
               value={nf(a.mediaEnviadasDia)}
               hint="Média das atendentes"
               icon={Send}
             />
             <StatCard
-              label="Recebidas por dia"
+              label="Mensagens recebidas por dia"
               value={nf(a.mediaRecebidasDia)}
               hint="Média dos clientes"
               icon={MessageSquare}

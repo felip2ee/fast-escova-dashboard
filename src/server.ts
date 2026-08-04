@@ -57,8 +57,22 @@ export default {
         try {
           const requestedPeriod = url.searchParams.get("period");
           const period =
-            requestedPeriod === "today" || requestedPeriod === "7d" ? requestedPeriod : "30d";
-          return Response.json(await getDashboardData(period), {
+            requestedPeriod === "today" ||
+            requestedPeriod === "7d" ||
+            requestedPeriod === "lastMonth" ||
+            requestedPeriod === "custom"
+              ? requestedPeriod
+              : "30d";
+          const start = url.searchParams.get("start") ?? undefined;
+          const end = url.searchParams.get("end") ?? undefined;
+          const validDate = /^\d{4}-\d{2}-\d{2}$/;
+          if (
+            period === "custom" &&
+            (!start || !end || !validDate.test(start) || !validDate.test(end) || start > end)
+          ) {
+            return Response.json({ error: "Intervalo de datas invalido." }, { status: 400 });
+          }
+          return Response.json(await getDashboardData(period, { start, end }), {
             headers: { "cache-control": "private, max-age=30" },
           });
         } catch (error) {

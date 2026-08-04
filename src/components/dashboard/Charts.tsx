@@ -42,7 +42,7 @@ export function MessagesChart({ data }: { data: DashboardData["messagesByDay"] }
         <Area
           type="monotone"
           dataKey="enviadas"
-          name="Enviadas pelas atendentes"
+          name="Mensagens enviadas pelas atendentes"
           stroke="var(--color-chart-1)"
           fill="var(--color-chart-1)"
           fillOpacity={0.22}
@@ -50,7 +50,7 @@ export function MessagesChart({ data }: { data: DashboardData["messagesByDay"] }
         <Area
           type="monotone"
           dataKey="recebidas"
-          name="Recebidas"
+          name="Mensagens recebidas dos clientes"
           stroke="var(--color-chart-3)"
           fill="var(--color-chart-3)"
           fillOpacity={0.16}
@@ -83,14 +83,6 @@ export function DispatchesChart({ data }: { data: DashboardData["dispatchesByDay
           stroke="var(--color-chart-2)"
           fill="var(--color-chart-2)"
           fillOpacity={0.16}
-        />
-        <Area
-          type="monotone"
-          dataKey="recebidas"
-          name="Mensagens recebidas"
-          stroke="var(--color-chart-3)"
-          fill="var(--color-chart-3)"
-          fillOpacity={0.12}
         />
       </AreaChart>
     </ResponsiveContainer>

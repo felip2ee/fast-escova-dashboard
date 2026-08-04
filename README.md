@@ -20,7 +20,8 @@ O projeto utiliza TanStack Start, React, TypeScript, Tailwind CSS e Recharts. A 
 - Disparadas: tentativas processadas, incluindo falhas; entregues e lidas consideram todo o processamento da campanha, mesmo quando a fila termina após as 20:00.
 - Custo estimado: US$ 0,04 por mensagem disparada.
 - Fuso horário: `America/Araguaina`.
-- Oportunidade gerada: primeira resposta do contato atribuída ao disparo em até 7 dias.
+- Oportunidade gerada: primeira mensagem recebida do mesmo número, na mesma conta WABA,
+  atribuída ao disparo mais recente ocorrido nas 48 horas anteriores.
 - CTR: conversas geradas divididas pelas mensagens entregues.
 - Primeira resposta: intervalo entre o disparo e a primeira resposta atribuída.
 - Resposta média: intervalo entre uma mensagem recebida e a próxima mensagem de saída na mesma conversa.
