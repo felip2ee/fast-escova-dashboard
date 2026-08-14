@@ -77,53 +77,35 @@ export async function getDashboardData(
         count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido','falha')) AS enviadas,
         count(cd.id) FILTER (WHERE cd.status_atual IN ('entregue','lido')) AS entregues,
         count(cd.id) FILTER (WHERE cd.status_atual = 'lido') AS lidas,
-        count(cd.id) FILTER (WHERE EXISTS (
-          SELECT 1 FROM disparos.mensagens mo
-          JOIN disparos.contatos cto ON cto.id=mo.contato_id
-          WHERE mo.escopo='conversa' AND mo.direcao='entrada'
-            AND mo.conta_waba_id=cd.conta_waba_id
-            AND right(regexp_replace(COALESCE(cto.wa_id,cto.celular,''),'[^0-9]','','g'),8)
-              = right(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g'),8)
-            AND length(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g')) >= 8
-            AND COALESCE(mo.wa_timestamp,mo.criado_em)
-              BETWEEN cd.enviado_em AND cd.enviado_em + interval '48 hours'
-            AND NOT EXISTS (
-              SELECT 1 FROM disparos.campanha_destinatarios cd2
-              WHERE cd2.conta_waba_id=cd.conta_waba_id AND cd2.enviado_em>cd.enviado_em
-                AND cd2.enviado_em<=COALESCE(mo.wa_timestamp,mo.criado_em)
-                AND right(regexp_replace(COALESCE(cd2.celular_snapshot,''),'[^0-9]','','g'),8)
-                  = right(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g'),8)
-            )
-            AND (COALESCE(mo.wa_timestamp,mo.criado_em) AT TIME ZONE 'America/Araguaina')::date
-              BETWEEN ${periodStart} AND ${periodEnd}
-        )) AS conversas,
+        count(cd.id) FILTER (WHERE tc.tem_conversa) AS conversas,
         (SELECT count(*) FROM disparos.mensagens mr
           JOIN disparos.campanha_destinatarios cdr ON cdr.id=mr.atribuida_destinatario_id
           WHERE cdr.campanha_id=c.id AND mr.escopo='conversa' AND mr.direcao='entrada') AS mensagens_recebidas,
-        round(100.0 * count(cd.id) FILTER (WHERE EXISTS (
-          SELECT 1 FROM disparos.mensagens mo
-          JOIN disparos.contatos cto ON cto.id=mo.contato_id
-          WHERE mo.escopo='conversa' AND mo.direcao='entrada'
-            AND mo.conta_waba_id=cd.conta_waba_id
-            AND right(regexp_replace(COALESCE(cto.wa_id,cto.celular,''),'[^0-9]','','g'),8)
-              = right(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g'),8)
-            AND length(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g')) >= 8
-            AND COALESCE(mo.wa_timestamp,mo.criado_em)
-              BETWEEN cd.enviado_em AND cd.enviado_em + interval '48 hours'
-            AND NOT EXISTS (
-              SELECT 1 FROM disparos.campanha_destinatarios cd2
-              WHERE cd2.conta_waba_id=cd.conta_waba_id AND cd2.enviado_em>cd.enviado_em
-                AND cd2.enviado_em<=COALESCE(mo.wa_timestamp,mo.criado_em)
-                AND right(regexp_replace(COALESCE(cd2.celular_snapshot,''),'[^0-9]','','g'),8)
-                  = right(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g'),8)
-            )
-            AND (COALESCE(mo.wa_timestamp,mo.criado_em) AT TIME ZONE 'America/Araguaina')::date
-              BETWEEN ${periodStart} AND ${periodEnd}
-        ))
+        round(100.0 * count(cd.id) FILTER (WHERE tc.tem_conversa)
           / nullif(count(cd.id) FILTER (WHERE cd.status_atual IN ('enviado','entregue','lido','falha')), 0), 2) AS ctr,
         round(avg(cd.tempo_resposta_segundos) FILTER (WHERE cd.engajou) / 60.0, 2) AS primeira_resposta_min
       FROM disparos.campanhas c
       LEFT JOIN disparos.campanha_destinatarios cd ON cd.campanha_id = c.id
+      LEFT JOIN LATERAL (
+        SELECT EXISTS (
+          SELECT 1 FROM disparos.mensagens mo
+          JOIN disparos.contatos cto ON cto.id = mo.contato_id
+          WHERE mo.escopo = 'conversa' AND mo.direcao = 'entrada'
+            AND mo.conta_waba_id = cd.conta_waba_id
+            AND cto.numero_norm = cd.celular_norm
+            AND length(cd.celular_norm) = 8
+            AND COALESCE(mo.wa_timestamp, mo.criado_em)
+              BETWEEN cd.enviado_em AND cd.enviado_em + interval '48 hours'
+            AND NOT EXISTS (
+              SELECT 1 FROM disparos.campanha_destinatarios cd2
+              WHERE cd2.conta_waba_id = cd.conta_waba_id AND cd2.enviado_em > cd.enviado_em
+                AND cd2.enviado_em <= COALESCE(mo.wa_timestamp, mo.criado_em)
+                AND cd2.celular_norm = cd.celular_norm
+            )
+            AND (COALESCE(mo.wa_timestamp, mo.criado_em) AT TIME ZONE 'America/Araguaina')::date
+              BETWEEN ${periodStart} AND ${periodEnd}
+        ) AS tem_conversa
+      ) tc ON true
       WHERE EXISTS (
         SELECT 1 FROM disparos.campanha_destinatarios cdf
         WHERE cdf.campanha_id=c.id AND (
@@ -133,17 +115,15 @@ export async function getDashboardData(
             JOIN disparos.contatos ctf ON ctf.id=mf.contato_id
             WHERE mf.escopo='conversa' AND mf.direcao='entrada'
               AND mf.conta_waba_id=cdf.conta_waba_id
-              AND right(regexp_replace(COALESCE(ctf.wa_id,ctf.celular,''),'[^0-9]','','g'),8)
-                = right(regexp_replace(COALESCE(cdf.celular_snapshot,''),'[^0-9]','','g'),8)
-              AND length(regexp_replace(COALESCE(cdf.celular_snapshot,''),'[^0-9]','','g')) >= 8
+              AND ctf.numero_norm = cdf.celular_norm
+              AND length(cdf.celular_norm) = 8
               AND COALESCE(mf.wa_timestamp,mf.criado_em)
                 BETWEEN cdf.enviado_em AND cdf.enviado_em + interval '48 hours'
               AND NOT EXISTS (
                 SELECT 1 FROM disparos.campanha_destinatarios cdf2
                 WHERE cdf2.conta_waba_id=cdf.conta_waba_id AND cdf2.enviado_em>cdf.enviado_em
                   AND cdf2.enviado_em<=COALESCE(mf.wa_timestamp,mf.criado_em)
-                  AND right(regexp_replace(COALESCE(cdf2.celular_snapshot,''),'[^0-9]','','g'),8)
-                    = right(regexp_replace(COALESCE(cdf.celular_snapshot,''),'[^0-9]','','g'),8)
+                  AND cdf2.celular_norm = cdf.celular_norm
               )
               AND (COALESCE(mf.wa_timestamp,mf.criado_em) AT TIME ZONE 'America/Araguaina')::date
                 BETWEEN ${periodStart} AND ${periodEnd}
