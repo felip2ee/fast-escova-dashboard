@@ -37,6 +37,12 @@ DATABASE_SSL=disable
 
 Esta instalação usa conexão PostgreSQL sem TLS, portanto mantenha `DATABASE_SSL=disable`.
 
+Antes de rodar o dashboard pela primeira vez em um banco (incluindo bancos novos, staging ou restaurados de backup), aplique a migração que cria as colunas normalizadas de telefone usadas pelas consultas de campanhas e disparos por dia:
+
+```bash
+psql "$DATABASE_URL" -f sql/2026-08-14-add-phone-norm-columns.sql
+```
+
 ## Desenvolvimento local
 
 Requisitos:
