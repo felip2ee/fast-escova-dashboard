@@ -25,6 +25,8 @@ stack.yml
 .wrangler/
 .dev.vars
 
+.superpowers/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
