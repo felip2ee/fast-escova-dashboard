@@ -141,7 +141,7 @@ export async function getDashboardData(
           (e.recebida_em AT TIME ZONE 'America/Araguaina')::date AS dia
         FROM (
           SELECT m.conta_waba_id,
-            regexp_replace(COALESCE(ct.wa_id,ct.celular,''),'[^0-9]','','g') AS numero,
+            ct.numero_norm,
             COALESCE(m.wa_timestamp,m.criado_em) AS recebida_em
           FROM disparos.mensagens m
           JOIN disparos.contatos ct ON ct.id=m.contato_id
@@ -152,8 +152,8 @@ export async function getDashboardData(
         JOIN LATERAL (
           SELECT cd.id FROM disparos.campanha_destinatarios cd
           WHERE cd.conta_waba_id=e.conta_waba_id AND cd.enviado_em IS NOT NULL
-            AND length(e.numero) >= 8
-            AND right(regexp_replace(COALESCE(cd.celular_snapshot,''),'[^0-9]','','g'),8)=right(e.numero,8)
+            AND length(e.numero_norm) = 8
+            AND cd.celular_norm = e.numero_norm
             AND e.recebida_em BETWEEN cd.enviado_em AND cd.enviado_em + interval '48 hours'
           ORDER BY cd.enviado_em DESC LIMIT 1
         ) cand ON true
