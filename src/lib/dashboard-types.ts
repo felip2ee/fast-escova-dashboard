@@ -20,6 +20,14 @@ export type CampaignMetric = {
   primeiraRespostaMin: number | null;
 };
 
+export type AgentMetric = {
+  id: string;
+  nome: string;
+  conversas: number;
+  mensagensEnviadas: number;
+  tempoRespostaMedioMin: number | null;
+};
+
 export type DashboardPeriod =
   "today" | "yesterday" | "thisMonth" | "7d" | "30d" | "lastMonth" | "custom";
 
@@ -40,12 +48,15 @@ export type DashboardData = {
   };
   atendimento: {
     totalConversas: number;
+    mensagensRecebidas?: number;
+    respostasHumanas?: number;
     mediaConversasDia: number;
     mediaEnviadasDia: number;
     mediaRecebidasDia: number;
     tempoRespostaMedioMin: number | null;
     primeiraRespostaMediaMin: number | null;
   };
+  agents?: AgentMetric[];
   campaigns: CampaignMetric[];
   dispatchesByDay: Array<{
     dia: string;
