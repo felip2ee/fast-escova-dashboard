@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/Charts";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { SyncStatus } from "@/components/dashboard/SyncStatus";
+import { dashboardLocalDate, trailingStartDate } from "@/lib/dashboard-range";
 import type { DashboardData, DashboardPeriod } from "@/lib/dashboard-types";
 
 export const Route = createFileRoute("/")({
@@ -46,16 +47,11 @@ const decimal = (value: number) =>
 const min = (value: number | null) => (value == null ? "—" : `${decimal(value)} min`);
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "USD" });
-const today = () => new Date().toISOString().slice(0, 10);
-const thirtyDaysAgo = () => {
-  const date = new Date();
-  date.setDate(date.getDate() - 29);
-  return date.toISOString().slice(0, 10);
-};
+const today = () => dashboardLocalDate();
 
 function Dashboard() {
   const [period, setPeriod] = useState<DashboardPeriod>("30d");
-  const [startDate, setStartDate] = useState(thirtyDaysAgo);
+  const [startDate, setStartDate] = useState(trailingStartDate);
   const [endDate, setEndDate] = useState(today);
   const [appliedFilter, setAppliedFilter] = useState({
     period: "30d" as DashboardPeriod,

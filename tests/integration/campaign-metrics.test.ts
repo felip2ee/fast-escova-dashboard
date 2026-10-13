@@ -67,7 +67,7 @@ async function recipient(input: {
   id: number;
   campaignId: number;
   messageId: number;
-  conversationId: number;
+  conversationId: number | null;
   sentAt?: string;
   state?: string;
   status?: string;
@@ -295,5 +295,64 @@ describe("campaign funnel metrics", () => {
       entregues: 1,
       respondidas: 1,
     });
+  });
+
+  test("uses the outgoing projection conversation when only the message id was stored", async () => {
+    await campaign(1);
+    await recipient({ id: 601, campaignId: 1, messageId: 601, conversationId: null });
+    await projected({ id: 601, conversationId: 600, createdAt: "2026-10-01T12:00:00Z" });
+    await projected({
+      id: 602,
+      conversationId: 600,
+      createdAt: "2026-10-01T13:00:00Z",
+      direction: "incoming",
+      kind: "customer",
+      status: null,
+    });
+
+    const result = await getCampaignMetrics(range, integrationPool);
+    expect(result.campaigns[0]).toMatchObject({ entregues: 1, respondidas: 1 });
+  });
+
+  test("gives an equal-timestamp reply to exactly one deterministic latest send", async () => {
+    await campaign(1, "Primeira");
+    await campaign(2, "Segunda");
+    await recipient({ id: 701, campaignId: 1, messageId: 701, conversationId: 700 });
+    await recipient({ id: 702, campaignId: 2, messageId: 702, conversationId: 700 });
+    await projected({ id: 701, conversationId: 700, createdAt: "2026-10-01T12:00:00Z" });
+    await projected({ id: 702, conversationId: 700, createdAt: "2026-10-01T12:00:00Z" });
+    await projected({
+      id: 703,
+      conversationId: 700,
+      createdAt: "2026-10-01T13:00:00Z",
+      direction: "incoming",
+      kind: "customer",
+      status: null,
+    });
+
+    const result = await getCampaignMetrics(range, integrationPool);
+    expect(result.campaigns.find((item) => item.id === "1")?.respondidas).toBe(0);
+    expect(result.campaigns.find((item) => item.id === "2")?.respondidas).toBe(1);
+    expect(result.overview.respondidas).toBe(1);
+  });
+
+  test("does not merge a retryable pending result into confirmed failures", async () => {
+    await campaign(1);
+    await recipient({
+      id: 801,
+      campaignId: 1,
+      messageId: 801,
+      conversationId: 801,
+      state: "retryable_failure",
+    });
+    await projected({
+      id: 801,
+      conversationId: 801,
+      createdAt: "2026-10-01T12:00:00Z",
+      status: "failed",
+    });
+
+    const result = await getCampaignMetrics(range, integrationPool);
+    expect(result.campaigns[0]).toMatchObject({ falhas: 0, pendentes: 1 });
   });
 });

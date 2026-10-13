@@ -103,7 +103,7 @@ export async function getCampaignMetrics(
         cd.conta_waba_id,
         cd.celular_norm,
         cd.chatwoot_message_id,
-        cd.chatwoot_conversation_id,
+        COALESCE(cd.chatwoot_conversation_id, outgoing.conversation_id) AS chatwoot_conversation_id,
         cd.estado_chatwoot,
         cd.status_atual,
         cd.revisao_chatwoot,
@@ -140,7 +140,7 @@ export async function getCampaignMetrics(
             SELECT 1
             FROM all_sends newer
             WHERE newer.chatwoot_conversation_id = sends.chatwoot_conversation_id
-              AND newer.sent_at > sends.sent_at
+              AND (newer.sent_at, newer.id) > (sends.sent_at, sends.id)
               AND newer.sent_at <= incoming.created_at
           )
         ORDER BY incoming.created_at, incoming.message_id
@@ -164,7 +164,7 @@ export async function getCampaignMetrics(
             FROM all_sends newer
             WHERE newer.conta_waba_id = sends.conta_waba_id
               AND newer.celular_norm = sends.celular_norm
-              AND newer.sent_at > sends.sent_at
+              AND (newer.sent_at, newer.id) > (sends.sent_at, sends.id)
               AND newer.sent_at <= COALESCE(incoming.wa_timestamp, incoming.criado_em)
           )
         ORDER BY COALESCE(incoming.wa_timestamp, incoming.criado_em), incoming.id
@@ -188,7 +188,11 @@ export async function getCampaignMetrics(
          count(cohort.id) AS enviadas,
          count(cohort.id) FILTER (WHERE cohort.effective_status IN ('delivered', 'read')) AS entregues,
          count(cohort.id) FILTER (WHERE cohort.effective_status = 'read') AS lidas,
-         count(cohort.id) FILTER (WHERE cohort.effective_status = 'failed' AND NOT cohort.uncertain) AS falhas,
+         count(cohort.id) FILTER (
+           WHERE cohort.effective_status = 'failed'
+             AND NOT cohort.uncertain
+             AND NOT cohort.pending
+         ) AS falhas,
          count(cohort.id) FILTER (WHERE cohort.pending AND NOT cohort.uncertain) AS pendentes,
          count(cohort.id) FILTER (WHERE cohort.uncertain) AS resultados_incertos,
          count(cohort.id) FILTER (WHERE cohort.responded) AS respondidas
@@ -206,7 +210,11 @@ export async function getCampaignMetrics(
          count(cohort.id) FILTER (WHERE cohort.effective_status IN ('delivered', 'read')) AS entregues,
          count(cohort.id) FILTER (WHERE cohort.effective_status = 'read') AS lidas,
          count(cohort.id) FILTER (WHERE cohort.responded) AS respondidas,
-         count(cohort.id) FILTER (WHERE cohort.effective_status = 'failed' AND NOT cohort.uncertain) AS falhas
+         count(cohort.id) FILTER (
+           WHERE cohort.effective_status = 'failed'
+             AND NOT cohort.uncertain
+             AND NOT cohort.pending
+         ) AS falhas
        FROM cohort
        GROUP BY day
        ORDER BY day`,

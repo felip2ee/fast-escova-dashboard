@@ -48,6 +48,10 @@ function formatDate(value: Date) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+export function dashboardLocalDate(value = new Date()) {
+  return formatDate(value);
+}
+
 function parseDate(value: string | undefined, label: string) {
   if (!value) throw new DashboardRangeError(`${label} obrigatoria`);
   if (!datePattern.test(value)) throw new DashboardRangeError(`${label} invalida`);
@@ -67,6 +71,11 @@ function addDays(date: Date, amount: number) {
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+export function trailingStartDate(value = new Date()) {
+  const localToday = parseDate(dashboardLocalDate(value), "Data atual");
+  return isoDate(addDays(localToday, -29));
 }
 
 function zonedMidnight(date: Date) {

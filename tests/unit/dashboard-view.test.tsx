@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { DashboardData } from "../../src/lib/dashboard-types";
+import { dashboardLocalDate, trailingStartDate } from "../../src/lib/dashboard-range";
 import { DashboardReport } from "../../src/routes/index";
 
 const fixture: DashboardData = {
@@ -106,6 +107,12 @@ function text(data: DashboardData) {
 }
 
 describe("client-facing dashboard report", () => {
+  test("uses the Araguaina calendar near the UTC day boundary", () => {
+    const lateLocalEvening = new Date("2026-10-13T02:30:00.000Z");
+    expect(dashboardLocalDate(lateLocalEvening)).toBe("2026-10-12");
+    expect(trailingStartDate(lateLocalEvening)).toBe("2026-09-13");
+  });
+
   test("shows the campaign funnel, rates, costs, and operational details", () => {
     const html = text(fixture);
 
