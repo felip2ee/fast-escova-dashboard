@@ -26,6 +26,7 @@ stack.yml
 .dev.vars
 
 .superpowers/
+.worktrees/
 
 # Editor directories and files
 .vscode/*

@@ -1,50 +1,36 @@
 import "./lib/error-capture";
 
+import { DashboardUnavailableError, getDashboardData } from "./lib/dashboard-db";
+import { DashboardRangeError, resolveDashboardRange } from "./lib/dashboard-range";
+import type { DashboardData, DashboardPeriod } from "./lib/dashboard-types";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-import { getDashboardData } from "./lib/dashboard-db";
-import type { DashboardData, DashboardPeriod } from "./lib/dashboard-types";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
-let serverEntryPromise: Promise<ServerEntry> | undefined;
-const dashboardCache = new Map<string, { expiresAt: number; data: DashboardData }>();
-const dashboardRequests = new Map<string, Promise<DashboardData>>();
-
-async function getCachedDashboardData(
+type DashboardLoader = (
   period: DashboardPeriod,
   range: { start?: string; end?: string },
-) {
-  const cacheKey = `${period}:${range.start ?? ""}:${range.end ?? ""}`;
-  const cached = dashboardCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
+) => Promise<DashboardData>;
 
-  const pending = dashboardRequests.get(cacheKey);
-  if (pending) return pending;
+type ServerDependencies = {
+  getDashboardData: DashboardLoader;
+  getServerEntry?: () => Promise<ServerEntry>;
+};
 
-  const request = getDashboardData(period, range)
-    .then((data) => {
-      dashboardCache.set(cacheKey, { data, expiresAt: Date.now() + 30_000 });
-      return data;
-    })
-    .finally(() => dashboardRequests.delete(cacheKey));
-  dashboardRequests.set(cacheKey, request);
-  return request;
-}
+let serverEntryPromise: Promise<ServerEntry> | undefined;
 
-async function getServerEntry(): Promise<ServerEntry> {
+async function productionServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => (m.default ?? m) as ServerEntry,
+      (module) => (module.default ?? module) as ServerEntry,
     );
   }
   return serverEntryPromise;
 }
 
-// h3 swallows in-handler throws into a normal 500 Response with body
-// {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
@@ -69,55 +55,82 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
-export default {
-  async fetch(request: Request, env: unknown, ctx: unknown) {
-    try {
-      const url = new URL(request.url);
-      if (url.pathname === "/api/health") {
-        return Response.json({ status: "ok" });
-      }
-      if (url.pathname === "/api/dashboard") {
-        if (request.method !== "GET") return new Response(null, { status: 405 });
-        try {
-          const requestedPeriod = url.searchParams.get("period");
-          const period =
-            requestedPeriod === "today" ||
-            requestedPeriod === "yesterday" ||
-            requestedPeriod === "thisMonth" ||
-            requestedPeriod === "7d" ||
-            requestedPeriod === "lastMonth" ||
-            requestedPeriod === "custom"
-              ? requestedPeriod
-              : "30d";
+function dashboardPeriod(value: string | null): DashboardPeriod {
+  return value === "today" ||
+    value === "yesterday" ||
+    value === "thisMonth" ||
+    value === "7d" ||
+    value === "lastMonth" ||
+    value === "custom"
+    ? value
+    : "30d";
+}
+
+function dashboardJson(body: unknown, status = 200) {
+  return Response.json(body, { status, headers: { "cache-control": "no-store" } });
+}
+
+export function createServer(dependencies: ServerDependencies): ServerEntry {
+  const dashboardRequests = new Map<string, Promise<DashboardData>>();
+
+  async function loadOnce(period: DashboardPeriod, range: { start?: string; end?: string }) {
+    const key = `${period}:${range.start ?? ""}:${range.end ?? ""}`;
+    const current = dashboardRequests.get(key);
+    if (current) return current;
+
+    const pending = dependencies
+      .getDashboardData(period, range)
+      .finally(() => dashboardRequests.delete(key));
+    dashboardRequests.set(key, pending);
+    return pending;
+  }
+
+  return {
+    async fetch(request: Request, env: unknown, ctx: unknown) {
+      try {
+        const url = new URL(request.url);
+        if (url.pathname === "/api/health") {
+          return Response.json({ status: "ok" });
+        }
+        if (url.pathname === "/api/dashboard") {
+          if (request.method !== "GET") return new Response(null, { status: 405 });
+          const period = dashboardPeriod(url.searchParams.get("period"));
           const start = url.searchParams.get("start") ?? undefined;
           const end = url.searchParams.get("end") ?? undefined;
-          const validDate = /^\d{4}-\d{2}-\d{2}$/;
-          if (
-            period === "custom" &&
-            (!start || !end || !validDate.test(start) || !validDate.test(end) || start > end)
-          ) {
-            return Response.json({ error: "Intervalo de datas invalido." }, { status: 400 });
+          const range = {
+            ...(start ? { start } : {}),
+            ...(end ? { end } : {}),
+          };
+          try {
+            resolveDashboardRange(period, range);
+            return dashboardJson(await loadOnce(period, range));
+          } catch (error) {
+            if (error instanceof DashboardRangeError) {
+              return dashboardJson({ error: "Intervalo de datas inválido." }, 400);
+            }
+            console.error(
+              error instanceof DashboardUnavailableError
+                ? "dashboard refresh unavailable"
+                : "dashboard refresh failed",
+            );
+            return dashboardJson(
+              { error: "Não foi possível atualizar os dados do dashboard." },
+              503,
+            );
           }
-          return Response.json(await getCachedDashboardData(period, { start, end }), {
-            headers: { "cache-control": "private, max-age=30" },
-          });
-        } catch (error) {
-          console.error("dashboard database error", error);
-          return Response.json(
-            { error: "Nao foi possivel consultar o Postgres." },
-            { status: 503 },
-          );
         }
+        const handler = await (dependencies.getServerEntry ?? productionServerEntry)();
+        const response = await handler.fetch(request, env, ctx);
+        return await normalizeCatastrophicSsrResponse(response);
+      } catch (error) {
+        console.error(error);
+        return new Response(renderErrorPage(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
       }
-      const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
-    } catch (error) {
-      console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
-  },
-};
+    },
+  };
+}
+
+export default createServer({ getDashboardData });

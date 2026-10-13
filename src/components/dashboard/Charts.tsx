@@ -71,18 +71,34 @@ export function DispatchesChart({ data }: { data: DashboardData["dispatchesByDay
         <Area
           type="monotone"
           dataKey="disparadas"
-          name="Disparadas"
+          name="Enviadas"
           stroke="var(--color-chart-1)"
           fill="var(--color-chart-1)"
           fillOpacity={0.22}
         />
         <Area
           type="monotone"
-          dataKey="oportunidades"
-          name="Oportunidades"
+          dataKey="entregues"
+          name="Entregues"
           stroke="var(--color-chart-2)"
           fill="var(--color-chart-2)"
           fillOpacity={0.16}
+        />
+        <Area
+          type="monotone"
+          dataKey="lidas"
+          name="Lidas"
+          stroke="var(--color-chart-3)"
+          fill="var(--color-chart-3)"
+          fillOpacity={0.12}
+        />
+        <Area
+          type="monotone"
+          dataKey="respondidas"
+          name="Pessoas que responderam"
+          stroke="var(--color-chart-4)"
+          fill="var(--color-chart-4)"
+          fillOpacity={0.1}
         />
       </AreaChart>
     </ResponsiveContainer>
