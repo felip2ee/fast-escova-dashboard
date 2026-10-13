@@ -7,6 +7,13 @@ export type CampaignMetric = {
   enviadas: number;
   entregues: number;
   lidas: number;
+  falhas?: number;
+  pendentes?: number;
+  resultadosIncertos?: number;
+  respondidas?: number;
+  taxaEntrega?: number;
+  taxaLeitura?: number;
+  taxaResposta?: number;
   conversas: number;
   mensagensRecebidas: number;
   ctr: number;
@@ -45,6 +52,10 @@ export type DashboardData = {
     disparadas: number;
     oportunidades: number;
     recebidas: number;
+    entregues?: number;
+    lidas?: number;
+    respondidas?: number;
+    falhas?: number;
   }>;
   messagesByDay: Array<{
     dia: string;
